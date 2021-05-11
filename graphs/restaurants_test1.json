@@ -1,0 +1,1 @@
+{"features": {"attributes": true, "categories": [true, [[1, 50], [2, 50]]], "city": true, "state": true, "temporal_skew": true}, "distance": 500, "filename": "../graphs/restaurants_test1"}
