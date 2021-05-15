@@ -222,7 +222,15 @@ def to_categorical(y, num_classes=None, dtype='float32'):
     return categorical
 
 
-def get_skew(dates):
+def get_skew(profile):
+    H = 0
+    for visit_hour in profile:
+        H += visit_hour * math.log(visit_hour + 1e-3)
+
+    return round(-H, 3)
+
+
+def get_temporal_profile(dates):
     dates_list = dates.split(",")
     parsed_dates = [datetime.datetime.strptime(
         date.strip(), "%Y-%m-%d %H:%M:%S") for date in dates_list]
@@ -234,17 +242,43 @@ def get_skew(dates):
 
     visits_per_hour_normalized = [
         round(visits/len(dates_list), 2) for visits in visits_per_hour]
-    # print(visits_per_hour_normalized)
 
-    H = 0
-    for visit_hour in visits_per_hour_normalized:
-        H += visit_hour * math.log(visit_hour + 1e-3)
-
-    return round(-H, 3)
+    return visits_per_hour_normalized
 
 
 def get_temporal_skew(restaurant_df, checkin_df):
     restaurant_df = restaurant_df.merge(checkin_df, on="business_id")
-    restaurant_df["temporal_skew"] = restaurant_df["date"].apply(get_skew)
+    restaurant_df["temporal_profile"] = restaurant_df["date"].apply(
+        get_temporal_profile)
+    restaurant_df["temporal_skew"] = restaurant_df["temporal_profile"].apply(
+        get_skew)
 
     return restaurant_df
+
+
+def get_top_categories(df, n):
+    categories = {}
+
+    for _, row in df.iterrows():
+        cats = [cat.lower().strip() for cat in row["categories"].split(",")]
+        for c in cats:
+            if c in categories.keys():
+                categories[c] += 1
+            else:
+                categories[c] = 1
+
+    categories_list = list(categories.items())
+    categories_list = sorted(categories_list, key=itemgetter(1), reverse=True)
+    top_categories = [name for (name, count) in categories_list[:n]]
+    return top_categories
+
+
+def get_categories(categories, top_categories):
+    categories = categories.lower()
+    categories_list = []
+    for top_cat in top_categories:
+        if top_cat in categories:
+            categories_list.append(1)
+        else:
+            categories_list.append(0)
+    return categories_list
