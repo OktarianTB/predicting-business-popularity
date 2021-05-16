@@ -73,12 +73,12 @@ class HybridNetwork(nn.Module):
         return out
 
 
-def train(model, num_epochs, dataset, train_loader, optimizer, criterion, device="cpu", k=5):
+def train(model, num_epochs, dataset, train_loader, optimizer, criterion, device="cpu", k=5, all_loader=None):
     for epoch in range(num_epochs):
         model.train()
 
-        pbar = tqdm(total=int(dataset.train_index.shape[0]))
-        pbar.set_description(f'Epoch {(epoch + 1):02d}')
+#         pbar = tqdm(total=int(dataset.train_index.shape[0]))
+#         pbar.set_description(f'Epoch {(epoch + 1):02d}')
 
         total_loss = total_correct = 0
         steps = 0
@@ -92,7 +92,7 @@ def train(model, num_epochs, dataset, train_loader, optimizer, criterion, device
             unique_users = torch.LongTensor(unique_users)
 
             user_loader = NeighborSampler(dataset.user_pyg_graph.edge_index, node_idx=unique_users,
-                                          sizes=[10, 10], batch_size=unique_users.shape[0], shuffle=False)
+                                          sizes=[-1, -1], batch_size=unique_users.shape[0], shuffle=False)
             
             for num_users, u_id, u_adjs in user_loader:
                 # this is actually just one loop: using for loop since 
@@ -114,32 +114,53 @@ def train(model, num_epochs, dataset, train_loader, optimizer, criterion, device
             steps += 1
             num_examples += batch_size
             
-            pbar.set_postfix(accuracy=total_correct / num_examples, curr_loss=total_loss / steps)
-            pbar.update(batch_size)
+#             pbar.set_postfix(accuracy=total_correct / num_examples, curr_loss=total_loss / steps)
+#             pbar.update(batch_size)
 
-        pbar.close()
+#         pbar.close()
 
         loss = total_loss / len(train_loader)
         approx_acc = total_correct / int(dataset.train_index.shape[0])
 
         print(f'Epoch {epoch + 1:02d}, Loss: {loss:.4f}, Approx. Train: {approx_acc:.4f}')
+        if all_loader is not None:
+            train_acc, val_acc, test_acc = test(model, dataset, all_loader, device, k=k)
+            print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
+                  f'Test: {test_acc:.4f}')
 
-#         train_acc, val_acc, test_acc = test()
-#         print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
-#               f'Test: {test_acc:.4f}')
 
 
-# @torch.no_grad()
-# def test(model, dataset):
-#     model.eval()
+@torch.no_grad()
+def test(model, dataset, all_loader, device, k=5):
+    outs = []
+    model.eval()
+    for batch_size, n_id, adjs in all_loader:
+        adjs = [adj.to(device) for adj in adjs]
 
-#     out = model.inference(x)
+        num_users_per_res, users = dataset.get_visited_users(n_id[:batch_size], k)
+        unique_users, inverse_idx = np.unique(users, return_inverse=True)
+        unique_users = torch.LongTensor(unique_users)
 
-#     y_true = dataset.labels.cpu().unsqueeze(-1)
-#     y_pred = out.argmax(dim=-1, keepdim=True)
+        user_loader = NeighborSampler(dataset.user_pyg_graph.edge_index, node_idx=unique_users,
+                                      sizes=[-1, -1], batch_size=unique_users.shape[0], shuffle=False)
 
-#     results = []
-#     for mask in [dataset.train_mask, dataset.val_mask, dataset.test_mask]:
-#         results += [int(y_pred[mask].eq(y_true[mask]).sum()) / int(mask.sum())]
+        for num_users, u_id, u_adjs in user_loader:
+            # this is actually just one loop: using for loop since 
+            # next(iter(user_loader)) appears to be buggy
+            u_adjs = [adj.to(device) for adj in u_adjs]
 
-#     return results
+        del user_loader
+
+        out = model(dataset.res_x[n_id], adjs, dataset.user_x[u_id], u_adjs, inverse_idx, num_users_per_res)
+        outs.append(out.cpu())
+
+    outs = torch.cat(outs, dim=0)
+
+    y_true = dataset.labels.cpu().unsqueeze(-1)
+    y_pred = outs.argmax(dim=-1, keepdim=True)
+
+    results = []
+    for idx in [dataset.train_index, dataset.val_index, dataset.test_index]:
+        results.append(int(y_pred[idx].eq(y_true[idx]).sum()) / int(idx.shape[0]))
+
+    return results
