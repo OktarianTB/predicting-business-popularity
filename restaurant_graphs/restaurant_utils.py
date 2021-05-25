@@ -10,7 +10,8 @@ import numpy as np
 def calculate_popularity(df):
     # Calculate popularity value according to formula
     df["popularity_value"] = (df["raw_stars"] * df["review_count"] +
-                              df["raw_stars"].mean() * (df["tip_count"] + df["checkin_count"]))
+                              df["raw_stars"].mean() *
+                              (df["tip_count"] + df["checkin_count"]))
 
     bottom = df["popularity_value"].quantile(0.33)
     top = df["popularity_value"].quantile(0.67)
@@ -28,7 +29,9 @@ def calculate_popularity(df):
 
 
 def extract_attributes(restaurant_df, business_df):
+
     def get_attribute_value(att):
+
         def _get_att(x):
             try:
                 if att in x:
@@ -36,9 +39,11 @@ def extract_attributes(restaurant_df, business_df):
                 return 1
             except:
                 return 1
+
         return _get_att
 
     def get_attribute_bool(att):
+
         def _get_att(x):
             try:
                 if att in x:
@@ -47,9 +52,11 @@ def extract_attributes(restaurant_df, business_df):
                 return 0
             except:
                 return 0
+
         return _get_att
 
     def get_attribute_wifi(att):
+
         def _get_att(x):
             try:
                 if att in x:
@@ -58,22 +65,22 @@ def extract_attributes(restaurant_df, business_df):
                 return 0
             except:
                 return 0
+
         return _get_att
 
     business_df["RestaurantsPriceRange2"] = business_df["attributes"].apply(
         get_attribute_value("RestaurantsPriceRange2"))
 
-    business_df["WiFi"] = business_df["attributes"].apply(
-        get_attribute_wifi("WiFi"))
+    business_df["WiFi"] = business_df["attributes"].apply(get_attribute_wifi("WiFi"))
 
     bool_attributes = [
         "OutdoorSeating", "RestaurantsGoodForGroups", "BusinessAcceptsCreditCards",
-        "GoodForKids", "RestaurantsDelivery", "Caters", "WheelchairAccessible", "RestaurantsTakeOut"
+        "GoodForKids", "RestaurantsDelivery", "Caters", "WheelchairAccessible",
+        "RestaurantsTakeOut"
     ]
 
     for att in bool_attributes:
-        business_df[att] = business_df["attributes"].apply(
-            get_attribute_bool(att))
+        business_df[att] = business_df["attributes"].apply(get_attribute_bool(att))
 
     df = restaurant_df.merge(business_df, on="business_id")
     df = df.drop(["attributes_y", "attributes_x"], axis=1)
@@ -114,6 +121,8 @@ def get_top_k_p_combinations(df, comb_p, topk, output_freq=False):
     all_categories_p_combos = list(chain(*all_categories_p_combos))
 
     category_combo_counter = Counter(all_categories_p_combos)
+    del category_combo_counter[("Restaurants",)]
+    del category_combo_counter[("Food",)]
     sorted_categories_combinations = sorted(category_combo_counter.items(),
                                             key=lambda x: x[1],
                                             reverse=True)
@@ -128,6 +137,7 @@ def get_cat2idx(df, topk=500):
     all_categories = [
         category for category_list in df["categories"].values
         for category in category_list.split(", ")
+        if category not in ["Restaurants", "Food"]
     ]
 
     # Sort all unique values of the item categories by their frequencies in descending order
@@ -179,8 +189,7 @@ def get_category_features(df, cat2idx, top_combo):
                 cross_transform_output[k] = 0
         return cross_transform_output
 
-    df["top_categories_vector"] = df["categories"].apply(
-        _categories_to_binary_output)
+    df["top_categories_vector"] = df["categories"].apply(_categories_to_binary_output)
     df["top_categories_combination_vector"] = df["categories"].apply(
         _categories_cross_transformation)
 
@@ -198,8 +207,7 @@ def get_encoder(df):
 
 def encode_cities_states(df, encoder):
     for col_name in ["city", "state"]:
-        df[col_name +
-            "_idx"] = df[col_name].apply(lambda x: encoder[col_name].get(x, 0))
+        df[col_name + "_idx"] = df[col_name].apply(lambda x: encoder[col_name].get(x, 0))
 
     return df
 
@@ -232,8 +240,10 @@ def get_skew(profile):
 
 def get_temporal_profile(dates):
     dates_list = dates.split(",")
-    parsed_dates = [datetime.datetime.strptime(
-        date.strip(), "%Y-%m-%d %H:%M:%S") for date in dates_list]
+    parsed_dates = [
+        datetime.datetime.strptime(date.strip(), "%Y-%m-%d %H:%M:%S")
+        for date in dates_list
+    ]
     visits_per_hour = [0] * 24
 
     for date in parsed_dates:
@@ -241,17 +251,16 @@ def get_temporal_profile(dates):
         visits_per_hour[hour] += 1
 
     visits_per_hour_normalized = [
-        round(visits/len(dates_list), 2) for visits in visits_per_hour]
+        round(visits / len(dates_list), 2) for visits in visits_per_hour
+    ]
 
     return visits_per_hour_normalized
 
 
 def get_temporal_skew(restaurant_df, checkin_df):
     restaurant_df = restaurant_df.merge(checkin_df, on="business_id")
-    restaurant_df["temporal_profile"] = restaurant_df["date"].apply(
-        get_temporal_profile)
-    restaurant_df["temporal_skew"] = restaurant_df["temporal_profile"].apply(
-        get_skew)
+    restaurant_df["temporal_profile"] = restaurant_df["date"].apply(get_temporal_profile)
+    restaurant_df["temporal_skew"] = restaurant_df["temporal_profile"].apply(get_skew)
 
     return restaurant_df
 

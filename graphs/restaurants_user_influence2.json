@@ -1,0 +1,1 @@
+{"features": {"attributes": true, "categories": [true, [[1, 50]]], "city": true, "state": true, "temporal_skew": true, "temporal_alignment": false, "node_degree": false, "user_influence": true}, "distance": 500, "filename": "../graphs/restaurants_user_influence2"}

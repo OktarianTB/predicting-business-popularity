@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
-from torch_geometric.data import NeighborSampler
+from torch_geometric.data import NeighborSampler, Data
 import torch_geometric.nn as pyg_nn
 from tqdm.notebook import tqdm
 import numpy as np
@@ -13,20 +13,23 @@ class GNN(nn.Module):
     def __init__(self,
                  input_size,
                  hidden_size,
-                 output_size,
+                 is_final=False,
+                 output_size=3,
                  num_layers=2,
                  model="GraphSage",
                  aggr="mean"):
         super().__init__()
         self.num_layers = num_layers
+        self.is_final = is_final
 
         conv_model = self._build_conv_model(model)
         self.convs = nn.ModuleList()
-        self.convs.append(conv_model(input_size, hidden_size))
+        self.convs.append(conv_model(input_size, hidden_size, aggr=aggr))
         for _ in range(self.num_layers - 1):
             self.convs.append(conv_model(hidden_size, hidden_size, aggr=aggr))
 
-        self.convs.append(conv_model(hidden_size, output_size))
+        if is_final:
+            self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x, adjs):
         # `train_loader` computes the k-hop neighborhood of a batch of nodes,
@@ -39,8 +42,12 @@ class GNN(nn.Module):
             x_target = x[:size[1]]  # Target nodes are always placed first.
             x = self.convs[i]((x, x_target), edge_index)
             if i != self.num_layers - 1:
-                x = F.relu(x)
+                x = F.leaky_relu(x)
                 x = F.dropout(x, p=0.5, training=self.training)
+
+        if self.is_final:
+            return self.fc(x)
+
         return x
 
     def _build_conv_model(self, model_type="GraphSage"):
@@ -71,13 +78,13 @@ class HybridNetwork(nn.Module):
 
         self.res_GNN = GNN(res_size,
                            hidden_size,
-                           hidden_size,
+                           output_size=hidden_size,
                            num_layers=num_layers,
                            model=model,
                            aggr=aggr)
         self.user_GNN = GNN(user_size,
                             hidden_size,
-                            hidden_size,
+                            output_size=hidden_size,
                             num_layers=num_layers,
                             model=model,
                             aggr=aggr)
@@ -92,6 +99,7 @@ class HybridNetwork(nn.Module):
             num_users_per_res)  # batch size * [# of user per restaruant, hidden size]
         user_x = torch.stack([x.mean(dim=0) for x in user_x],
                              0)  # [batch size, hidden size]
+        user_x = torch.nan_to_num(user_x)
         emb = torch.cat([res_x, user_x], 1)  # [batch size, hidden size * 2]
         out = self.out_layer(emb)
         return out
@@ -109,12 +117,6 @@ def train(model,
     for epoch in range(num_epochs):
         model.train()
 
-        #         pbar = tqdm(total=int(dataset.train_index.shape[0]))
-        #         pbar.set_description(f'Epoch {(epoch + 1):02d}')
-
-        total_loss = total_correct = 0
-        steps = 0
-        num_examples = 0
         for batch_size, n_id, adjs in train_loader:
             # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
             adjs = [adj.to(device) for adj in adjs]
@@ -139,30 +141,16 @@ def train(model,
             optimizer.zero_grad()
             out = model(dataset.res_x[n_id], adjs, dataset.user_x[u_id], u_adjs,
                         inverse_idx, num_users_per_res)
-            loss = criterion(out, dataset.labels[n_id[:batch_size]])
+            # out = model(dataset.res_x[n_id], adjs)
+            label = dataset.labels[n_id[:batch_size]]
+            loss = criterion(out, label)
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
-
-            pred = out.argmax(dim=-1)
-            total_correct += int(pred.eq(dataset.labels[n_id[:batch_size]]).sum())
-            steps += 1
-            num_examples += batch_size
-
-
-#             pbar.set_postfix(accuracy=total_correct / num_examples, curr_loss=total_loss / steps)
-#             pbar.update(batch_size)
-
-#         pbar.close()
-
-        loss = total_loss / len(train_loader)
-        approx_acc = total_correct / int(dataset.train_index.shape[0])
-
-        print(f'Epoch {epoch + 1:02d}, Loss: {loss:.4f}, Approx. Train: {approx_acc:.4f}')
-        if all_loader is not None:
+        if all_loader is not None and epoch % 5 == 0:
             train_acc, val_acc, test_acc = test(model, dataset, all_loader, device, k=k)
-            print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, ' f'Test: {test_acc:.4f}')
+            print(f'epoch: {epoch + 1}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
+                  f'Test: {test_acc:.4f}')
 
 
 @torch.no_grad()
@@ -191,6 +179,7 @@ def test(model, dataset, all_loader, device, k=5):
 
         out = model(dataset.res_x[n_id], adjs, dataset.user_x[u_id], u_adjs, inverse_idx,
                     num_users_per_res)
+        # out = model(dataset.res_x[n_id], adjs)
         outs.append(out.cpu())
 
     outs = torch.cat(outs, dim=0)

@@ -30,9 +30,9 @@ def create_user_graph(user_features, edges):
     G = nx.Graph()
 
     for uid, feat in user_features.iterrows():
-        G.add_node(uid, node_features=torch.Tensor(feat.values), node_type="user")
+        G.add_node(uid, node_feature=torch.Tensor(feat.values), node_type="user")
 
-    G.add_edges_from(edges, edge_type="uu")  # uu means user to user
+    G.add_edges_from(edges)
 
     # Remove friends that are not users anymore
     remove_nodes = set(list(G.nodes)) - set(user_features.index)

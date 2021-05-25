@@ -1,54 +1,10 @@
-from sklearn.model_selection import train_test_split
 import torch
 from torch_geometric.data import Data
-from tqdm import tqdm
 import networkx as nx
 import numpy as np
 import pandas as pd
-
-
-def from_networkx(G):
-    r"""Converts a :obj:`networkx.Graph` or :obj:`networkx.DiGraph` to a
-    :class:`torch_geometric.data.Data` instance.
-
-    Args:
-        G (networkx.Graph or networkx.DiGraph): A networkx graph.
-
-    This code is forked from official torch_geometric.utils.convert.from_networkx,
-    version 1.7.0
-    """
-
-    G = nx.convert_node_labels_to_integers(G, ordering="sorted")
-    G = G.to_directed() if not nx.is_directed(G) else G
-    edge_index = torch.LongTensor(list(G.edges)).t().contiguous()
-
-    data = {}
-
-    for i, (_, feat_dict) in enumerate(G.nodes(data=True)):
-        for key, value in feat_dict.items():
-            if i == 0:
-                data[str(key)] = [value]
-            else:
-                data[str(key)].append(value)
-
-    for i, (_, _, feat_dict) in enumerate(G.edges(data=True)):
-        for key, value in feat_dict.items():
-            if i == 0:
-                data[str(key)] = [value]
-            else:
-                data[str(key)].append(value)
-
-    for key, item in data.items():
-        try:
-            data[key] = torch.tensor(item)
-        except ValueError:
-            pass
-
-    data['edge_index'] = edge_index.view(2, -1)
-    data = Data.from_dict(data)
-    data.num_nodes = G.number_of_nodes()
-
-    return data
+from deepsnap.graph import Graph
+from deepsnap.dataset import GraphDataset
 
 
 class HybridDataset:
@@ -69,11 +25,12 @@ class HybridDataset:
         print(f"Number of restaurants: {self.res_G.number_of_nodes()}")
         print(f"Number of neighbors: {self.res_G.number_of_edges()}")
 
-        self.res_idx2node = dict(enumerate(sorted(self.res_G.nodes())))
+        self.res_idx2node = dict(enumerate(self.res_G.nodes()))
         self.res_node2idx = {node: idx for idx, node in self.res_idx2node.items()}
 
         print("converting restaurant graph to pyg graph...", end=" ")
-        self.res_pyg_graph = from_networkx(self.res_G)  # to pytorch geometric format
+        self.res_pyg_graph = Graph(self.res_G)
+        self.res_pyg_graph.node_label = torch.LongTensor(self.res_pyg_graph.node_label)
         print("done!")
 
         # 2. user graph
@@ -82,11 +39,11 @@ class HybridDataset:
         print(f"Number of users: {self.user_G.number_of_nodes()}")
         print(f"Number of friends: {self.user_G.number_of_edges()}")
 
-        self.user_idx2node = dict(enumerate(sorted(self.user_G.nodes())))
+        self.user_idx2node = dict(enumerate(self.user_G.nodes()))
         self.user_node2idx = {node: idx for idx, node in self.user_idx2node.items()}
 
         print("converting restaurant graph to pyg graph...", end=" ")
-        self.user_pyg_graph = from_networkx(self.user_G)  # to pytorch geometric format
+        self.user_pyg_graph = Graph(self.user_G)
         print("done!")
 
         # 3. visited users per restaurant
@@ -98,24 +55,17 @@ class HybridDataset:
         print(self.max_k)
 
         # split
-        self.train_index, self.val_index, self.test_index = self.train_test_split(split)
+        dataset = GraphDataset(graphs=[self.res_pyg_graph], task='node')
+        dataset_train, dataset_val, dataset_test = dataset.split(transductive=True,
+                                                                 split_ratio=split,
+                                                                 shuffle=True)
+        self.train_index = dataset_train.graphs[0].node_label_index
+        self.val_index = dataset_val.graphs[0].node_label_index
+        self.test_index = dataset_test.graphs[0].node_label_index
 
-        # features and labels
-        self.res_x = torch.stack(self.res_pyg_graph.node_feature, 0)
-        self.user_x = torch.stack(self.user_pyg_graph.node_features, 0)
-        self.labels = self.res_pyg_graph.node_label.long()
-
-    def train_test_split(self, split=[0.8, 0.1, 0.1]):
-        train_nodes, test_nodes = train_test_split(np.arange(
-            self.res_pyg_graph.node_label.shape[0]),
-                                                   test_size=split[1] + split[2],
-                                                   shuffle=True)
-        val_nodes, test_nodes = train_test_split(test_nodes,
-                                                 test_size=split[2] /
-                                                 (split[1] + split[2]),
-                                                 shuffle=True)
-
-        return [torch.LongTensor(x) for x in (train_nodes, val_nodes, test_nodes)]
+        self.res_x = self.res_pyg_graph.node_feature
+        self.user_x = self.user_pyg_graph.node_feature
+        self.labels = self.res_pyg_graph.node_label
 
     def get_visited_users(self, target_res, k=5):
         target_res = [self.res_idx2node[int(res)] for res in target_res]
@@ -140,12 +90,12 @@ class HybridDataset:
 
     @property
     def num_res_features(self):
-        return self.res_pyg_graph.node_feature[0].shape[0]
+        return self.res_pyg_graph.num_node_features
 
     @property
     def num_user_features(self):
-        return self.user_pyg_graph.node_features[0].shape[0]
+        return self.user_pyg_graph.num_node_features
 
     @property
     def num_class(self):
-        return self.res_pyg_graph.node_label.unique().shape[0]
+        return self.res_pyg_graph.num_node_labels
