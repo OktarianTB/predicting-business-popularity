@@ -7,25 +7,56 @@ import pandas as pd
 import numpy as np
 
 
-def calculate_popularity(df):
-    # Calculate popularity value according to formula
-    df["popularity_value"] = (df["raw_stars"] * df["review_count"] +
-                              df["raw_stars"].mean() *
-                              (df["tip_count"] + df["checkin_count"]))
-
+def classification_popularity(df, pop_type):
+    if pop_type == "weighted_visit_count":
+        # Calculate popularity value according to formula
+        df["popularity_value"] = (df["raw_stars"] * df["review_count"] +
+                              df["raw_stars"].mean() * (df["tip_count"] + df["checkin_count"]))
+    elif pop_type == "visit_count":
+        df["popularity_value"] = df["review_count"] + df["tip_count"] + df["checkin_count"]
+    elif pop_type == "star_rating":
+        df["popularity_value"] = df["raw_stars"]
+    else:
+        print("This popularity type is not supported!")
+        raise TypeError
+        
     bottom = df["popularity_value"].quantile(0.33)
     top = df["popularity_value"].quantile(0.67)
-
+    
     def classify_popular(score):
         if score >= top:
             return 2
         if score >= bottom:
             return 1
         return 0
-
+    
     df["popularity"] = df["popularity_value"].apply(classify_popular)
-
     return df
+
+
+def mse_popularity(df, pop_type):
+    if pop_type == "log_visit_count":
+        df["popularity"] = df["review_count"] + df["tip_count"] + df["checkin_count"]
+        df["popularity"] = df["popularity"].apply(lambda x: math.log(x))
+    elif pop_type == "visit_count":
+        df["popularity"] = df["review_count"] + df["tip_count"] + df["checkin_count"]
+    elif pop_type == "star_rating":
+        df["popularity"] = df["raw_stars"]
+    else:
+        print("This popularity type is not supported!")
+        raise TypeError
+    return df
+
+
+def calculate_popularity(df, pop_type, pop_metric):
+    if pop_metric == "classification":
+        new_df = classification_popularity(df, pop_type)
+    elif pop_metric == "mse":
+        new_df = mse_popularity(df, pop_type)
+    else:
+        print("This popularity metric is not supported!")
+        raise TypeError
+    return new_df
 
 
 def extract_attributes(restaurant_df, business_df):
