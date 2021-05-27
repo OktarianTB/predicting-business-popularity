@@ -1,0 +1,1 @@
+{"popularity_type": "visit_count", "popularity_metric": "mse", "features": {"attributes": true, "categories": [true, [[1, 50], [2, 50]]], "city": true, "state": true, "temporal_skew": true, "temporal_alignment": false, "node_degree": false, "user_influence": true}, "distance": 500, "filename": "../graphs/best/mse/visit_count_mse"}

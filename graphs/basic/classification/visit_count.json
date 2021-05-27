@@ -1,0 +1,1 @@
+{"popularity_type": "visit_count", "popularity_metric": "classification", "features": {"attributes": true, "categories": [true, [[1, 50], [2, 50]]], "city": true, "state": true, "temporal_skew": false, "temporal_alignment": false, "node_degree": false, "user_influence": false}, "distance": 500, "filename": "../graphs/basic/classification/visit_count"}
