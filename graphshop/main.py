@@ -114,14 +114,15 @@ def test(model, dataset, device, mode, k=5):
 
 def main():
     basedir = "/data/schoiaj/repos/predicting-business-popularity"
-    dataset = HybridDataset(f"{basedir}/graphs/restaurants_user_influence2.gpickle",
-                            f"{basedir}/graphs/2017-2018_user_network.gpickle",
-                            f"{basedir}/datasets/2017-2018_visited_users.csv",
-                            f"restaurant_processed.csv",
-                            f"graphshop_neighborhood.csv",
-                            split=[0.8, 0.1, 0.1])
+    dataset = HybridDataset(
+        f"{basedir}/graphs/basic/classification/weighted_visit_count.gpickle",
+        f"{basedir}/graphs/2017-2018_user_network.gpickle",
+        f"{basedir}/datasets/2017-2018_visited_users.csv",
+        f"restaurant_processed.csv",
+        f"graphshop_neighborhood.csv",
+        split=[0.8, 0.1, 0.1])
 
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
     dataset.to(device)
     model = DistanceModule(dataset.num_user_features,
                            dataset.cat_vocab_len,

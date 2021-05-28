@@ -111,7 +111,7 @@ class DistanceModule(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.fc = nn.Linear(hidden_sizes[-1], hidden_sizes[-1])
 
-        self.out = nn.Linear(hidden_sizes[-1] * 3, out_dim)
+        self.out = nn.Linear(hidden_sizes[-1] * 2, out_dim)
 
         self.distances = nn.Parameter(torch.arange(10), requires_grad=False)
 
@@ -146,10 +146,10 @@ class DistanceModule(nn.Module):
 
         # distances = distances.to(device)
         # dist_emb = self.distance_embedding(distances)
-        dist_emb = self.distance_embedding(self.distances)  # [10, emb dim]
-        dist_emb = dist_emb.unsqueeze(1).repeat(1, bids.shape[2], 1)  # [10, k, emb dim]
-        # [bs, 10, k, emb dim]
-        dist_emb = dist_emb.unsqueeze(0).repeat(bids.shape[0], 1, 1, 1)
+        # dist_emb = self.distance_embedding(self.distances)  # [10, emb dim]
+        # dist_emb = dist_emb.unsqueeze(1).repeat(1, bids.shape[2], 1)  # [10, k, emb dim]
+        # # [bs, 10, k, emb dim]
+        # dist_emb = dist_emb.unsqueeze(0).repeat(bids.shape[0], 1, 1, 1)
 
         # all_node_feat = node_features[all_bid]  # [all_bid, node feature dim]
 
@@ -159,23 +159,23 @@ class DistanceModule(nn.Module):
         # feat = all_feature[bids]  # [bs, 10, k, feature dim]
 
         #########################################################################
-        lengths = lengths.to(device)
-        feat = node_features[bids]  # [bs, 10, k, feature_dim]
-        feat = torch.cat([feat, dist_emb], dim=-1)
-        feat = torch.flip(feat, dims=(1,))
-        feat = self.mlp(feat)
-        feat = feat.sum(dim=2)  # [bs, 10, feature dim]
-        feat = feat / lengths.unsqueeze(-1)
+        # lengths = lengths.to(device)
+        # feat = node_features[bids]  # [bs, 10, k, feature_dim]
+        # feat = torch.cat([feat, dist_emb], dim=-1)
+        # feat = torch.flip(feat, dims=(1,))
+        # feat = self.mlp(feat)
+        # feat = feat.sum(dim=2)  # [bs, 10, feature dim]
+        # feat = feat / lengths.unsqueeze(-1)
 
         # Finally, add the target business features
         target_features = node_features[target_bus]
         target_feat = self.target_mlp(target_features)
-        feat = torch.cat([feat, target_feat.unsqueeze(1)], dim=1)
+        # feat = torch.cat([feat, target_feat.unsqueeze(1)], dim=1)
 
-        seq_out, _ = self.rnn(feat.permute(1, 0, 2))  # [11, bs, feature dim]
+        # seq_out, _ = self.rnn(feat.permute(1, 0, 2))  # [11, bs, feature dim]
 
-        far_embedding = seq_out[-2, :, :]
-        near_embedding = self.fc(self.dropout(seq_out[-1, :, :]))
+        # far_embedding = seq_out[-2, :, :]
+        # near_embedding = self.fc(self.dropout(seq_out[-1, :, :]))
 
         # return self.out(torch.cat([far_embedding, near_embedding], -1))
         user_x = self.user_GNN(user_x, u_adjs)  # [all_unique_users, hidden size]
@@ -187,4 +187,5 @@ class DistanceModule(nn.Module):
                              0)  # [batch size, hidden size]
         user_x = torch.nan_to_num(user_x)
 
-        return self.out(torch.cat([far_embedding, near_embedding, user_x], dim=-1))
+        # return self.out(torch.cat([far_embedding, near_embedding, user_x], dim=-1))
+        return self.out(torch.cat([target_feat, user_x], dim=-1))

@@ -22,6 +22,7 @@ class GNN(nn.Module):
         self.num_layers = num_layers
         self.is_final = is_final
 
+        self.initial_proj = nn.Linear(input_size, input_size)
         conv_model = self._build_conv_model(model)
         self.convs = nn.ModuleList()
         self.convs.append(conv_model(input_size, hidden_size, aggr=aggr))
@@ -38,6 +39,7 @@ class GNN(nn.Module):
         # and the size/shape `size` of the bipartite graph.
         # Target nodes are also included in the source nodes so that one can
         # easily apply skip-connections or add self-loops.
+        x = self.initial_proj(x)
         for i, (edge_index, _, size) in enumerate(adjs):
             x_target = x[:size[1]]  # Target nodes are always placed first.
             x = self.convs[i]((x, x_target), edge_index)
@@ -114,6 +116,7 @@ def train(model,
           device="cpu",
           k=5,
           all_loader=None):
+    history = {'train': [], 'val': [], 'test': []}
     for epoch in range(num_epochs):
         model.train()
 
@@ -147,10 +150,15 @@ def train(model,
             loss.backward()
             optimizer.step()
 
-        if all_loader is not None and epoch % 5 == 0:
+        if all_loader is not None:
             train_acc, val_acc, test_acc = test(model, dataset, all_loader, device, k=k)
             print(f'epoch: {epoch + 1}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
                   f'Test: {test_acc:.4f}')
+            history['train'].append(train_acc)
+            history['val'].append(val_acc)
+            history['test'].append(test_acc)
+
+    return history
 
 
 @torch.no_grad()
