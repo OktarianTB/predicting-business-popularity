@@ -60,7 +60,7 @@ def calculate_popularity(df, pop_type, pop_metric):
 
 
 def extract_attributes(restaurant_df, business_df):
-
+    
     def get_attribute_value(att):
 
         def _get_att(x):
